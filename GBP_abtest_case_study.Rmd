@@ -1,0 +1,173 @@
+
+---
+title: "Game AB test experiment - Case Study"
+author: "Guillem Bagaria i Portet"
+date: "8/7/2018"
+geometry: margin=2cm
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data overview
+
+* Number of rows in activity table: 214,916,226
+
+* Number of playerid in activity table: 11,684,840
+
+* Number of rows in assignment table: 10,333,700
+
+* Number of unique playerid in assignment table: 10,333,700
+
+* Number of playerid in assignment in group A: 8,267,978 (80%)
+
+* Number of playerid in assignment in group B: 2,065,722 (20%)
+
+* Activity data runs from 2017-04-20 to 2017-05-22 (33 days).
+
+* Assignments to AB test run from 2017-05-04 to 2017-05-22 (19 days).
+
+# On the Implementation of the Experiment: Whom, How and When
+
+In order to better understand the scope and objectives of the test and given the data, an *age* metric will be calculated as the difference between the assingment date and the install date.
+
+```{r, echo=FALSE,warning=FALSE, comment=FALSE, message=FALSE, fig.width=3,fig.height=2}
+library(ggplot2)
+library(gridExtra)
+
+player_assignments_by_age <- read.csv('data/player_assignment_by_age.csv')
+colnames <- c('Number_of_assignments', 'Age_days')
+colnames(x = player_assignments_by_age) <- colnames
+player_assignments_by_age_removed0 <- rapply(player_assignments_by_age,function(x) ifelse(x>1000000,NA,x), how = "replace")
+
+assignment_date_by_group <- read.csv('data/assignment_date_by_group.csv')
+colnames <- c('Number_of_assignments', 'AB_test_group','Assignment_date')
+colnames(x = assignment_date_by_group) <- colnames
+for(i in 1:nrow(assignment_date_by_group)){
+  if(assignment_date_by_group[i,"AB_test_group"]=='B'){
+    assignment_date_by_group[i,"Number_of_assignments"]<-assignment_date_by_group[i,"Number_of_assignments"]*(-1)
+  }
+}
+
+par(mfrow=c(1,2))
+ggplot(data=player_assignments_by_age, aes(x=Age_days, y=Number_of_assignments)) +
+  geom_bar(stat="identity", color = 'steelblue')+
+  labs(x='Age in days', y='Number of assignments')+
+  theme_minimal()
+
+ggplot(data=player_assignments_by_age_removed0, aes(x=Age_days, y=Number_of_assignments)) +
+  geom_bar(stat="identity", color = 'steelblue')+
+  labs(x='Age in days, without age 0', y='Number of assignments')+
+  theme_minimal()
+```
+
+By plotting the data, the analysis shows that:
+
+* From the total assignments, 18% are players who have no previous experience on the game, that is, have *age* 0.
+
+* During the test period, after 0, the *age* metric follow an asymptotic decrease. This may suggest that aside from *age*, candidates for the test are selected based on other secondary metrics. However the noise in the decrease suggests that the *age* of users decreases following this trend in the total population.
+
+By assignment date and group:
+
+```{r, echo=FALSE,warning=FALSE, comment=FALSE, message=FALSE, fig.width=6,fig.height=2}
+
+ggplot(data=assignment_date_by_group, aes(x=Assignment_date, y=Number_of_assignments, fill = AB_test_group)) +
+  geom_bar(stat="identity", position = "identity")+
+  theme_minimal()+
+  labs(y='Number of assignments', fill='A/B test group')+
+  theme(legend.position = c(0.6, 0.7), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),axis.text.y = element_text(angle = 56, hjust = 1))
+```
+
+```{r, echo=FALSE,warning=FALSE, comment=FALSE, message=FALSE, fig.width=6,fig.height=2}
+ggplot(data=assignment_date_by_group, aes(x=Assignment_date, y=Number_of_assignments, fill = AB_test_group)) +
+  geom_bar(stat="identity", position = "identity")+
+  theme_minimal()+
+  labs(x='Assignment date', y='Number of assignments')+
+  theme(legend.position = 'none', axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_y_continuous(limits = c(-25000, 100000))
+
+```
+
+* On the first day, 8,566,689 players out of the total 10,333,700 are assigned to the test. During the following 18 days, around 100,000 players are added daily, keeping the same 80/20 split between groups.
+
+* During the test period, after the first day, the number of daily assignments follow a roughly constant trend, with variability.
+
+
+## On the Outcomes of the Experiment: Metrics and Analysis
+
+The metrics I will look at are:
+
+* How many games were played before and after the assignment in each A/B group.
+
+* How many conversions there were before and after the assignment in each A/B group.
+
+* Retention: How many players that installed on day 0 played again a week later or more vs the total number of installs.
+
+
+```
+-- Daily mean of games played in each group.
+Row	f0_	                abtest_group	 
+1	13.034513117659555    B	 
+2	13.182046403617402    A
+```
+
+The average number of games played per day and active player is around 13, but it can be seen already that in group A it slightly higher.
+
+When splitting the activity by time periods, before and after the assingment:
+
+```
+-- Daily mean of games played in each group before the assignment date
+-- Output
+Row	f0_	              abtest_group	 
+1	13.18277654890629   A
+2	13.17057432894987   B
+
+-- Daily mean of games played in each group after the assignment date
+-- Output
+Row	f0_	                abtest_group	 
+1	13.181616387750717    A
+2	12.93720051557958     B
+```
+
+On average, players in group B played less games after being assigned to the test.
+
+```
+-- Daily purchases in each group before the assignment date
+-- Output
+Row	f0_	                abtest_group	 
+1	0.030293484275634518  B 
+2	0.03115669568129514   A
+
+-- Daily purchases in each group after the assignment date
+-- Output
+Row	f0_	                abtest_group	 
+1	0.03094721695875372   A
+2	0.032233302778233365  B
+```
+
+However, after the assignment they register higher purchases.
+
+In order to assess if the means are significantly different, the standard deviations should be compared. The standard deviations for the *gameends* values are around 10 in both groups. This value is very large comapred to the mean, suggesting a very wide distribution similar to a Poisson distribution. However, the standard deviation that is interesting here is that of the mean, the $\bar{x}$ and not $x$, thus the standard deviation of $\bar{x}$ will be (in the worst case) $\frac{\sigma^2}{n}\approx \frac{100}{10^7}=10^{-5}$, thus it can be confidently stated that the variations observed are significant.
+
+In the case of *purchases* the standard deviation is 0.72767 for group B and 0.86239 for A. From this we can estimate a $\bar{x}$ of $\frac{\sigma^2}{n}\approx \frac{0.86^2}{3.9 \cdot10^6}\approx10^{-7}$ thus, it is a significant difference as well.
+
+The Retention as the number of players that installed on the starting date is:
+
+|                                 |     A     |     B     |
+|---------------------------------|:---------:|:---------:|
+|                   Total players | 6,854,226 | 1,712,463 |
+| Retained players (after 7 days) |   40,234  |   10,131  |
+|                       Ratio [%] |   0.587   |   0.592   |
+
+The ratio is slightly higher in B than in A. However, calculating the standard deviation through of a Bernoulli distribution as $\sigma = \sqrt{0.00587\cdot (1-0.00587)} = 0.0766$. This stadard deviation shows that the values are not significantly different from eachother.
+
+# Conclusions
+
+* The Retention is low. This explains the shape of the first plot, of user's *age*, more than any intentional sampling technique.
+
+* The differences in *purchases* and *gameends* in the test are significant: Although the *purchases* are higher, the *gameends* are lower. Given the low level of Retention, implementing the test might increase the *purchases* in existing players, but the lower *gameends* might be detrimental to the Retention and player base.
+
+* Along the test period, new participants are added to the test. These additions may be to replace the attritions, to keep or expand the sample size. However, this might "contaminate" the original sample, especially for tests within a specific time frame.
+
